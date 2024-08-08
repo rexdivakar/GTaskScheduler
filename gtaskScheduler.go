@@ -151,7 +151,7 @@ func job(command string) {
 // Function to parse cron job file and schedule jobs
 func scheduleJobsFromFile(c *cron.Cron, filePath string) {
 	file, err := os.Open(filePath)
-	if err != nil {
+	if (err != nil) {
 		fmt.Printf("Error opening file: %s\n", err)
 		return
 	}
@@ -326,8 +326,30 @@ func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(logContents)
 }
 
+// Function to check and create necessary directories
+func CheckAndCreateDirs() error {
+	directories := []string{"logs", "database"}
+
+	for _, dir := range directories {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			err := os.Mkdir(dir, 0755)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Directory created: %s\n", dir)
+		}
+	}
+	return nil
+}
+
 func main() {
-	var err error
+	// Check and create necessary directories
+	err := CheckAndCreateDirs()
+	if err != nil {
+		fmt.Printf("Error creating directories: %s\n", err)
+		return
+	}
+
 	logFile, err = initLogFile("./logs/scheduler.log")
 	if err != nil {
 		fmt.Printf("Error initializing log file: %s\n", err)

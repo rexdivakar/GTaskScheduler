@@ -1,0 +1,31 @@
+# This workflow will build a golang project
+name: GoBuild
+
+on:
+  push:
+    branches: [ "*" ]
+  pull_request:
+    branches: [ "*" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22.4'
+      
+    - name: Install dependencies
+      run: go mod download
+      
+    - name: Check for Go code formatting
+      run: go fmt ./...
+    
+    - name: Check for Go code errors
+      run: go vet ./...
+
+    - name: Build
+      run: go build -v gtaskScheduler.go

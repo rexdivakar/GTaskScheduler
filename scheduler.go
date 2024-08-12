@@ -34,7 +34,6 @@ var (
 	mu      sync.Mutex
 )
 
-
 // Function to initialize the log file
 func initLogFile(filePath string) (*os.File, error) {
 	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -90,13 +89,6 @@ func logJobStatus(jobStatus JobStatus) {
 	if err != nil {
 		fmt.Printf("Error writing to log file: %s\n", err)
 	}
-
-	// // Save the output to an individual log file for each task
-	// taskLogFilePath := fmt.Sprintf("./logs/%s.log", jobStatus.UID)
-	// err = ioutil.WriteFile(taskLogFilePath, []byte(logLine), 0644)
-	// if err != nil {
-	// 	fmt.Printf("Error writing task log file: %s\n", err)
-	// }
 }
 
 // Function to log job status into the SQLite database
@@ -307,7 +299,7 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if len(output) > 20 {
+		if len(output) > 2 {
 			// Create a button to download the log file
 			fmt.Fprintf(w, `<tr>
 				<td>%s</td>
@@ -330,6 +322,9 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprintln(w, `</tbody></table>
+	    <div class="mt-4">
+	        <a href="/add-job" class="btn btn-primary">Add New Job</a>
+	    </div>
 	    </div>
 	    <script>
 	        function updateRefreshInterval() {
@@ -354,8 +349,7 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	`)
 }
 
-
-
+// Handler for downloading log file
 func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	taskID := r.URL.Query().Get("task_id")
 
@@ -393,6 +387,74 @@ func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Handler for displaying the form to add new jobs
+func addJobHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, `
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
+	    <meta charset="UTF-8">
+	    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	    <title>Add New Job</title>
+	    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+	</head>
+	<body>
+	    <div class="container mt-5">
+	        <h1>Add New Cron Job</h1>
+	        <form action="/submit-job" method="post">
+	            <div class="mb-3">
+	                <label for="cronExpr" class="form-label">Cron Expression</label>
+	                <input type="text" class="form-control" id="cronExpr" name="cron_expr" required>
+	            </div>
+	            <div class="mb-3">
+	                <label for="command" class="form-label">Command</label>
+	                <input type="text" class="form-control" id="command" name="command" required>
+	            </div>
+	            <button type="submit" class="btn btn-primary">Add Job</button>
+	        </form>
+	    </div>
+	</body>
+	</html>
+	`)
+}
+
+// Handler for processing the form submission
+func submitJobHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cronExpr := r.FormValue("cron_expr")
+	command := r.FormValue("command")
+
+	if cronExpr == "" || command == "" {
+		http.Error(w, "Missing cron expression or command", http.StatusBadRequest)
+		return
+	}
+
+	// Add the new job to the file
+	file, err := os.OpenFile("cron_jobs.txt", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		http.Error(w, "Error opening cron jobs file", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	// _, err = file.WriteString("\n" + cronExpr + " " + command)
+	// if err != nil {
+	// 	http.Error(w, "Error writing to cron jobs file", http.StatusInternalServerError)
+	// 	return
+	// }
+
+	_, err = fmt.Fprintf(file, "%s %s\n", cronExpr, command)
+	if err != nil {
+		http.Error(w, "Error writing to cron jobs file", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
 
 func main() {
 
@@ -403,7 +465,6 @@ func main() {
 		return
 	}
 
-	
 	// Get the log directory path from environment variables
 	logDir := os.Getenv("LOG_DIR")
 	if logDir == "" {
@@ -416,7 +477,6 @@ func main() {
 		fmt.Println("DB_DIR environment variable is not set")
 		return
 	}
-
 
 	// Initialize folders
 	directories := []string{dbDir, logDir}
@@ -448,8 +508,10 @@ func main() {
 	c.Start()
 	logSchedulerStart()
 
-	http.HandleFunc("/status", distinctCommandsHandler)
+	http.HandleFunc("/", distinctCommandsHandler)
 	http.HandleFunc("/download", downloadLogHandler)
+	http.HandleFunc("/add-job", addJobHandler)
+	http.HandleFunc("/submit-job", submitJobHandler)
 	err = http.ListenAndServe("0.0.0.0:8000", nil)
 	if err != nil {
 		fmt.Printf("Error starting server: %s\n", err)

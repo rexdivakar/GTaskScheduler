@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/robfig/cron/v3"
 )
@@ -33,6 +33,7 @@ var (
 	db      *sql.DB
 	mu      sync.Mutex
 )
+
 
 // Function to initialize the log file
 func initLogFile(filePath string) (*os.File, error) {
@@ -90,12 +91,12 @@ func logJobStatus(jobStatus JobStatus) {
 		fmt.Printf("Error writing to log file: %s\n", err)
 	}
 
-	// Save the output to an individual log file for each task
-	taskLogFilePath := fmt.Sprintf("./logs/%s.log", jobStatus.UID)
-	err = ioutil.WriteFile(taskLogFilePath, []byte(logLine), 0644)
-	if err != nil {
-		fmt.Printf("Error writing task log file: %s\n", err)
-	}
+	// // Save the output to an individual log file for each task
+	// taskLogFilePath := fmt.Sprintf("./logs/%s.log", jobStatus.UID)
+	// err = ioutil.WriteFile(taskLogFilePath, []byte(logLine), 0644)
+	// if err != nil {
+	// 	fmt.Printf("Error writing task log file: %s\n", err)
+	// }
 }
 
 // Function to log job status into the SQLite database
@@ -151,7 +152,7 @@ func job(command string) {
 // Function to parse cron job file and schedule jobs
 func scheduleJobsFromFile(c *cron.Cron, filePath string) {
 	file, err := os.Open(filePath)
-	if (err != nil) {
+	if err != nil {
 		fmt.Printf("Error opening file: %s\n", err)
 		return
 	}
@@ -303,7 +304,7 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "</body></html>")
 }
 
-// Handler for downloading logs
+
 func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	taskID := r.URL.Query().Get("task_id")
 
@@ -312,52 +313,79 @@ func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Retrieve the log file contents based on taskID
-	taskLogFilePath := fmt.Sprintf("./logs/%s.log", taskID)
-	logContents, err := ioutil.ReadFile(taskLogFilePath)
+	// Retrieve job details from the database based on taskID
+	query := `SELECT task_id, command, timestamp, status, output FROM job_status WHERE task_id = ?`
+	row := db.QueryRow(query, taskID)
+
+	var command, timestamp, status, output string
+	err := row.Scan(&taskID, &command, &timestamp, &status, &output)
 	if err != nil {
-		http.Error(w, "Error reading log file", http.StatusInternalServerError)
+		if err == sql.ErrNoRows {
+			http.Error(w, "No log entries found for the specified task ID", http.StatusNotFound)
+		} else {
+			http.Error(w, "Error querying database", http.StatusInternalServerError)
+		}
 		return
 	}
+
+	// Format the log content
+	logContent := fmt.Sprintf("Task ID: %s\nCommand: %s\nTimestamp: %s\nStatus: %s\n\nOutput:\n%s\n", 
+		taskID, command, timestamp, status, output)
 
 	// Set headers for file download
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.log", taskID))
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(logContents)
-}
-
-// Function to check and create necessary directories
-func CheckAndCreateDirs() error {
-	directories := []string{"logs", "database"}
-
-	for _, dir := range directories {
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			err := os.Mkdir(dir, 0755)
-			if err != nil {
-				return err
-			}
-			fmt.Printf("Directory created: %s\n", dir)
-		}
+	_, err = w.Write([]byte(logContent))
+	if err != nil {
+		http.Error(w, "Error writing response", http.StatusInternalServerError)
+		return
 	}
-	return nil
 }
+
 
 func main() {
-	// Check and create necessary directories
-	err := CheckAndCreateDirs()
-	if err != nil {
-		fmt.Printf("Error creating directories: %s\n", err)
+
+	// Load environment variables from .env file
+	loadErr := godotenv.Load()
+	if loadErr != nil {
+		fmt.Printf("Error loading .env file: %s\n", loadErr)
 		return
 	}
 
-	logFile, err = initLogFile("./logs/scheduler.log")
+	
+	// Get the log directory path from environment variables
+	logDir := os.Getenv("LOG_DIR")
+	if logDir == "" {
+		fmt.Println("LOG_DIR environment variable is not set")
+		return
+	}
+
+	dbDir := os.Getenv("DB_DIR")
+	if dbDir == "" {
+		fmt.Println("DB_DIR environment variable is not set")
+		return
+	}
+
+
+	// Initialize folders
+	directories := []string{dbDir, logDir}
+	for _, dir := range directories {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			fmt.Printf("Error creating %s directory: %s\n", dir, err)
+			return
+		}
+	}
+
+	var err error
+	logFilePath := fmt.Sprintf("%s/scheduler.log", logDir)
+	logFile, err = initLogFile(logFilePath)
 	if err != nil {
 		fmt.Printf("Error initializing log file: %s\n", err)
 		return
 	}
 	defer logFile.Close()
 
-	db, err = initDatabase("./database/jobs.db")
+	db, err = initDatabase(fmt.Sprintf("%s/jobs.db", dbDir))
 	if err != nil {
 		fmt.Printf("Error initializing database: %s\n", err)
 		return
@@ -371,7 +399,7 @@ func main() {
 
 	http.HandleFunc("/status", distinctCommandsHandler)
 	http.HandleFunc("/download", downloadLogHandler)
-	err = http.ListenAndServe("localhost:8080", nil)
+	err = http.ListenAndServe("0.0.0.0:8080", nil)
 	if err != nil {
 		fmt.Printf("Error starting server: %s\n", err)
 		return

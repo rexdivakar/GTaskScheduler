@@ -250,17 +250,49 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 
 	currentTime := getCurrentTime()
 
-	fmt.Fprintln(w, "<html><body>")
-	fmt.Fprintln(w, "<h1>Job Execution Details</h1>")
-	fmt.Fprintln(w, "<p>Current Time: ", currentTime, "</p>")
-	fmt.Fprintln(w, "<p>Select refresh interval: ")
-	fmt.Fprintln(w, "<select id='refreshInterval' onchange='updateRefreshInterval()'>")
-	fmt.Fprintln(w, "<option value='5' ", checkSelected(refreshInterval, "5"), ">5s</option>")
-	fmt.Fprintln(w, "<option value='10' ", checkSelected(refreshInterval, "10"), ">10s</option>")
-	fmt.Fprintln(w, "<option value='30' ", checkSelected(refreshInterval, "30"), ">30s</option>")
-	fmt.Fprintln(w, "</select></p>")
-	fmt.Fprintln(w, "<table border='1'>")
-	fmt.Fprintln(w, "<tr><th>UID</th><th>Command</th><th>Last Run</th><th>Success Count</th><th>Failure Count</th><th>Output</th></tr>")
+	fmt.Fprintln(w, `
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
+	    <meta charset="UTF-8">
+	    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	    <title>Job Execution Details</title>
+	    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+	    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+	    <style>
+	        body {
+	            padding: 20px;
+	        }
+	        table {
+	            width: 100%;
+	            margin-top: 20px;
+	        }
+	    </style>
+	</head>
+	<body>
+	    <div class="container">
+	        <h1>Job Execution Details</h1>
+	        <p>Current Time: ` + currentTime + `</p>
+	        <div class="mb-3">
+	            <label for="refreshInterval" class="form-label">Select refresh interval:</label>
+	            <select id="refreshInterval" class="form-select" onchange="updateRefreshInterval()">
+	                <option value="5" ` + checkSelected(refreshInterval, "5") + `>5s</option>
+	                <option value="10" ` + checkSelected(refreshInterval, "10") + `>10s</option>
+	                <option value="30" ` + checkSelected(refreshInterval, "30") + `>30s</option>
+	            </select>
+	        </div>
+	        <table class="table table-striped table-hover">
+	            <thead>
+	                <tr>
+	                    <th>UID</th>
+	                    <th>Command</th>
+	                    <th>Last Run</th>
+	                    <th>Success Count</th>
+	                    <th>Failure Count</th>
+	                    <th>Output</th>
+	                </tr>
+	            </thead>
+	            <tbody>`)
 
 	for rows.Next() {
 		var taskID string
@@ -277,32 +309,51 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 
 		if len(output) > 20 {
 			// Create a button to download the log file
-			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td><td><button onclick=\"downloadLog('%s')\">Download Log</button></td></tr>", taskID, command, lastRun, successCount, failureCount, taskID)
+			fmt.Fprintf(w, `<tr>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%d</td>
+				<td>%d</td>
+				<td><button class="btn btn-primary" onclick="downloadLog('%s')">Download Log</button></td>
+			</tr>`, taskID, command, lastRun, successCount, failureCount, taskID)
 		} else {
-			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td><td>%s</td></tr>", taskID, command, lastRun, successCount, failureCount, output)
+			fmt.Fprintf(w, `<tr>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%d</td>
+				<td>%d</td>
+				<td>%s</td>
+			</tr>`, taskID, command, lastRun, successCount, failureCount, output)
 		}
 	}
-	fmt.Fprintln(w, "</table>")
-	fmt.Fprintln(w, `<script>
-	function updateRefreshInterval() {
-		var interval = document.getElementById('refreshInterval').value;
-		if (interval == 0) {
-			interval = 5; // Default to 5 seconds for real-time
-		}
-		window.location.search = 'interval=' + interval;
-	}
 
-	var selectedInterval = document.getElementById('refreshInterval').value;
-	setInterval(function() {
-		window.location.search = 'interval=' + selectedInterval;
-	}, selectedInterval * 1000);
+	fmt.Fprintln(w, `</tbody></table>
+	    </div>
+	    <script>
+	        function updateRefreshInterval() {
+	            var interval = document.getElementById('refreshInterval').value;
+	            if (interval == 0) {
+	                interval = 5; // Default to 5 seconds for real-time
+	            }
+	            window.location.search = 'interval=' + interval;
+	        }
 
-	function downloadLog(taskID) {
-		window.location.href = '/download?task_id=' + taskID;
-	}
-	</script>`)
-	fmt.Fprintln(w, "</body></html>")
+	        var selectedInterval = document.getElementById('refreshInterval').value;
+	        setInterval(function() {
+	            window.location.search = 'interval=' + selectedInterval;
+	        }, selectedInterval * 1000);
+
+	        function downloadLog(taskID) {
+	            window.location.href = '/download?task_id=' + taskID;
+	        }
+	    </script>
+	</body>
+	</html>
+	`)
 }
+
 
 
 func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
@@ -399,7 +450,7 @@ func main() {
 
 	http.HandleFunc("/status", distinctCommandsHandler)
 	http.HandleFunc("/download", downloadLogHandler)
-	err = http.ListenAndServe("0.0.0.0:8080", nil)
+	err = http.ListenAndServe("0.0.0.0:8000", nil)
 	if err != nil {
 		fmt.Printf("Error starting server: %s\n", err)
 		return

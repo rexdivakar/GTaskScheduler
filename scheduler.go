@@ -273,6 +273,9 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	                <option value="30" ` + checkSelected(refreshInterval, "30") + `>30s</option>
 	            </select>
 	        </div>
+	        <div class="mb-3">
+	            <a href="/add-job" class="btn btn-primary">Add New Job</a>
+	        </div>
 	        <table class="table table-striped table-hover">
 	            <thead>
 	                <tr>
@@ -322,10 +325,6 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprintln(w, `</tbody></table>
-	    <div class="mt-4">
-	        <a href="/add-job" class="btn btn-primary">Add New Job</a>
-	    </div>
-	    </div>
 	    <script>
 	        function updateRefreshInterval() {
 	            var interval = document.getElementById('refreshInterval').value;
@@ -348,6 +347,7 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	</html>
 	`)
 }
+
 
 // Handler for downloading log file
 func downloadLogHandler(w http.ResponseWriter, r *http.Request) {

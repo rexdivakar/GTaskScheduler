@@ -264,13 +264,13 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	<body>
 	    <div class="container">
 	        <h1>Job Execution Details</h1>
-	        <p>Current Time: ` + currentTime + `</p>
+	        <p>Current Time: `+currentTime+`</p>
 	        <div class="mb-3">
 	            <label for="refreshInterval" class="form-label">Select refresh interval:</label>
 	            <select id="refreshInterval" class="form-select" onchange="updateRefreshInterval()">
-	                <option value="5" ` + checkSelected(refreshInterval, "5") + `>5s</option>
-	                <option value="10" ` + checkSelected(refreshInterval, "10") + `>10s</option>
-	                <option value="30" ` + checkSelected(refreshInterval, "30") + `>30s</option>
+	                <option value="5" `+checkSelected(refreshInterval, "5")+`>5s</option>
+	                <option value="10" `+checkSelected(refreshInterval, "10")+`>10s</option>
+	                <option value="30" `+checkSelected(refreshInterval, "30")+`>30s</option>
 	            </select>
 	        </div>
 	        <div class="mb-3">
@@ -348,7 +348,6 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	`)
 }
 
-
 // Handler for downloading log file
 func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	taskID := r.URL.Query().Get("task_id")
@@ -374,7 +373,7 @@ func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Format the log content
-	logContent := fmt.Sprintf("Task ID: %s\nCommand: %s\nTimestamp: %s\nStatus: %s\n\nOutput:\n%s\n", 
+	logContent := fmt.Sprintf("Task ID: %s\nCommand: %s\nTimestamp: %s\nStatus: %s\n\nOutput:\n%s\n",
 		taskID, command, timestamp, status, output)
 
 	// Set headers for file download
@@ -478,6 +477,12 @@ func main() {
 		return
 	}
 
+	endPoint := os.Getenv("ENDPOINT")
+	if endPoint == "" {
+		fmt.Println("ENDPOINT environment variable is not set")
+		return
+	}
+
 	// Initialize folders
 	directories := []string{dbDir, logDir}
 	for _, dir := range directories {
@@ -512,7 +517,7 @@ func main() {
 	http.HandleFunc("/download", downloadLogHandler)
 	http.HandleFunc("/add-job", addJobHandler)
 	http.HandleFunc("/submit-job", submitJobHandler)
-	err = http.ListenAndServe("0.0.0.0:8000", nil)
+	err = http.ListenAndServe(endPoint, nil)
 	if err != nil {
 		fmt.Printf("Error starting server: %s\n", err)
 		return

@@ -34,7 +34,6 @@ var (
 	mu      sync.Mutex
 )
 
-
 // Function to initialize the log file
 func initLogFile(filePath string) (*os.File, error) {
 	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -90,13 +89,6 @@ func logJobStatus(jobStatus JobStatus) {
 	if err != nil {
 		fmt.Printf("Error writing to log file: %s\n", err)
 	}
-
-	// // Save the output to an individual log file for each task
-	// taskLogFilePath := fmt.Sprintf("./logs/%s.log", jobStatus.UID)
-	// err = ioutil.WriteFile(taskLogFilePath, []byte(logLine), 0644)
-	// if err != nil {
-	// 	fmt.Printf("Error writing task log file: %s\n", err)
-	// }
 }
 
 // Function to log job status into the SQLite database
@@ -250,17 +242,52 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 
 	currentTime := getCurrentTime()
 
-	fmt.Fprintln(w, "<html><body>")
-	fmt.Fprintln(w, "<h1>Job Execution Details</h1>")
-	fmt.Fprintln(w, "<p>Current Time: ", currentTime, "</p>")
-	fmt.Fprintln(w, "<p>Select refresh interval: ")
-	fmt.Fprintln(w, "<select id='refreshInterval' onchange='updateRefreshInterval()'>")
-	fmt.Fprintln(w, "<option value='5' ", checkSelected(refreshInterval, "5"), ">5s</option>")
-	fmt.Fprintln(w, "<option value='10' ", checkSelected(refreshInterval, "10"), ">10s</option>")
-	fmt.Fprintln(w, "<option value='30' ", checkSelected(refreshInterval, "30"), ">30s</option>")
-	fmt.Fprintln(w, "</select></p>")
-	fmt.Fprintln(w, "<table border='1'>")
-	fmt.Fprintln(w, "<tr><th>UID</th><th>Command</th><th>Last Run</th><th>Success Count</th><th>Failure Count</th><th>Output</th></tr>")
+	fmt.Fprintln(w, `
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
+	    <meta charset="UTF-8">
+	    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	    <title>Job Execution Details</title>
+	    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+	    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+	    <style>
+	        body {
+	            padding: 20px;
+	        }
+	        table {
+	            width: 100%;
+	            margin-top: 20px;
+	        }
+	    </style>
+	</head>
+	<body>
+	    <div class="container">
+	        <h1>Job Execution Details</h1>
+	        <p>Current Time: ` + currentTime + `</p>
+	        <div class="mb-3">
+	            <label for="refreshInterval" class="form-label">Select refresh interval:</label>
+	            <select id="refreshInterval" class="form-select" onchange="updateRefreshInterval()">
+	                <option value="5" ` + checkSelected(refreshInterval, "5") + `>5s</option>
+	                <option value="10" ` + checkSelected(refreshInterval, "10") + `>10s</option>
+	                <option value="30" ` + checkSelected(refreshInterval, "30") + `>30s</option>
+	            </select>
+	        </div>
+	        <div class="mb-3">
+	            <a href="/add-job" class="btn btn-primary">Add New Job</a>
+	        </div>
+	        <table class="table table-striped table-hover">
+	            <thead>
+	                <tr>
+	                    <th>UID</th>
+	                    <th>Command</th>
+	                    <th>Last Run</th>
+	                    <th>Success Count</th>
+	                    <th>Failure Count</th>
+	                    <th>Output</th>
+	                </tr>
+	            </thead>
+	            <tbody>`)
 
 	for rows.Next() {
 		var taskID string
@@ -275,36 +302,54 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if len(output) > 20 {
+		if len(output) > 2 {
 			// Create a button to download the log file
-			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td><td><button onclick=\"downloadLog('%s')\">Download Log</button></td></tr>", taskID, command, lastRun, successCount, failureCount, taskID)
+			fmt.Fprintf(w, `<tr>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%d</td>
+				<td>%d</td>
+				<td><button class="btn btn-primary" onclick="downloadLog('%s')">Download Log</button></td>
+			</tr>`, taskID, command, lastRun, successCount, failureCount, taskID)
 		} else {
-			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td><td>%s</td></tr>", taskID, command, lastRun, successCount, failureCount, output)
+			fmt.Fprintf(w, `<tr>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%d</td>
+				<td>%d</td>
+				<td>%s</td>
+			</tr>`, taskID, command, lastRun, successCount, failureCount, output)
 		}
 	}
-	fmt.Fprintln(w, "</table>")
-	fmt.Fprintln(w, `<script>
-	function updateRefreshInterval() {
-		var interval = document.getElementById('refreshInterval').value;
-		if (interval == 0) {
-			interval = 5; // Default to 5 seconds for real-time
-		}
-		window.location.search = 'interval=' + interval;
-	}
 
-	var selectedInterval = document.getElementById('refreshInterval').value;
-	setInterval(function() {
-		window.location.search = 'interval=' + selectedInterval;
-	}, selectedInterval * 1000);
+	fmt.Fprintln(w, `</tbody></table>
+	    <script>
+	        function updateRefreshInterval() {
+	            var interval = document.getElementById('refreshInterval').value;
+	            if (interval == 0) {
+	                interval = 5; // Default to 5 seconds for real-time
+	            }
+	            window.location.search = 'interval=' + interval;
+	        }
 
-	function downloadLog(taskID) {
-		window.location.href = '/download?task_id=' + taskID;
-	}
-	</script>`)
-	fmt.Fprintln(w, "</body></html>")
+	        var selectedInterval = document.getElementById('refreshInterval').value;
+	        setInterval(function() {
+	            window.location.search = 'interval=' + selectedInterval;
+	        }, selectedInterval * 1000);
+
+	        function downloadLog(taskID) {
+	            window.location.href = '/download?task_id=' + taskID;
+	        }
+	    </script>
+	</body>
+	</html>
+	`)
 }
 
 
+// Handler for downloading log file
 func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	taskID := r.URL.Query().Get("task_id")
 
@@ -342,6 +387,74 @@ func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Handler for displaying the form to add new jobs
+func addJobHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, `
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
+	    <meta charset="UTF-8">
+	    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	    <title>Add New Job</title>
+	    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+	</head>
+	<body>
+	    <div class="container mt-5">
+	        <h1>Add New Cron Job</h1>
+	        <form action="/submit-job" method="post">
+	            <div class="mb-3">
+	                <label for="cronExpr" class="form-label">Cron Expression</label>
+	                <input type="text" class="form-control" id="cronExpr" name="cron_expr" required>
+	            </div>
+	            <div class="mb-3">
+	                <label for="command" class="form-label">Command</label>
+	                <input type="text" class="form-control" id="command" name="command" required>
+	            </div>
+	            <button type="submit" class="btn btn-primary">Add Job</button>
+	        </form>
+	    </div>
+	</body>
+	</html>
+	`)
+}
+
+// Handler for processing the form submission
+func submitJobHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cronExpr := r.FormValue("cron_expr")
+	command := r.FormValue("command")
+
+	if cronExpr == "" || command == "" {
+		http.Error(w, "Missing cron expression or command", http.StatusBadRequest)
+		return
+	}
+
+	// Add the new job to the file
+	file, err := os.OpenFile("cron_jobs.txt", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		http.Error(w, "Error opening cron jobs file", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	// _, err = file.WriteString("\n" + cronExpr + " " + command)
+	// if err != nil {
+	// 	http.Error(w, "Error writing to cron jobs file", http.StatusInternalServerError)
+	// 	return
+	// }
+
+	_, err = fmt.Fprintf(file, "%s %s\n", cronExpr, command)
+	if err != nil {
+		http.Error(w, "Error writing to cron jobs file", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
 
 func main() {
 
@@ -352,7 +465,6 @@ func main() {
 		return
 	}
 
-	
 	// Get the log directory path from environment variables
 	logDir := os.Getenv("LOG_DIR")
 	if logDir == "" {
@@ -365,7 +477,6 @@ func main() {
 		fmt.Println("DB_DIR environment variable is not set")
 		return
 	}
-
 
 	// Initialize folders
 	directories := []string{dbDir, logDir}
@@ -397,9 +508,11 @@ func main() {
 	c.Start()
 	logSchedulerStart()
 
-	http.HandleFunc("/status", distinctCommandsHandler)
+	http.HandleFunc("/", distinctCommandsHandler)
 	http.HandleFunc("/download", downloadLogHandler)
-	err = http.ListenAndServe("0.0.0.0:8080", nil)
+	http.HandleFunc("/add-job", addJobHandler)
+	http.HandleFunc("/submit-job", submitJobHandler)
+	err = http.ListenAndServe("0.0.0.0:8000", nil)
 	if err != nil {
 		fmt.Printf("Error starting server: %s\n", err)
 		return

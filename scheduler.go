@@ -52,7 +52,7 @@ func initDatabase(dbPath string) (*sql.DB, error) {
 
 	// Create table if not exists
 	createTableSQL := `
-CREATE TABLE IF NOT EXISTS job_status (
+CREATE TABLE IF NOT EXISTS task_status (
     job_id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id TEXT UNIQUE,
     command TEXT,
@@ -100,7 +100,7 @@ func logJobStatusToDB(jobStatus JobStatus) {
 		return
 	}
 
-	insertSQL := `INSERT INTO job_status (task_id, command, timestamp, status, output) VALUES (?, ?, ?, ?, ?)`
+	insertSQL := `INSERT INTO task_status (task_id, command, timestamp, status, output) VALUES (?, ?, ?, ?, ?)`
 	result, err := db.Exec(insertSQL, jobStatus.UID, jobStatus.Command, jobStatus.Timestamp, jobStatus.Status, jobStatus.Output)
 	if err != nil {
 		fmt.Printf("Error inserting into database: %s\n", err)
@@ -230,7 +230,7 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 		       SUM(CASE WHEN status = 'Success' THEN 1 ELSE 0 END) AS success_count,
 		       SUM(CASE WHEN status = 'Failure' THEN 1 ELSE 0 END) AS failure_count,
 		       output
-		FROM job_status
+		FROM task_status
 		GROUP BY command
 		ORDER BY last_run DESC
 	`)
@@ -358,7 +358,7 @@ func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve job details from the database based on taskID
-	query := `SELECT task_id, command, timestamp, status, output FROM job_status WHERE task_id = ?`
+	query := `SELECT task_id, command, timestamp, status, output FROM task_status WHERE task_id = ?`
 	row := db.QueryRow(query, taskID)
 
 	var command, timestamp, status, output string

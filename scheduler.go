@@ -226,137 +226,96 @@ func checkSelected(current, option string) string {
 
 // Handler for displaying distinct commands and their last status
 func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
-	mu.Lock()
-	defer mu.Unlock()
+    mu.Lock()
+    defer mu.Unlock()
 
-	// Get refresh interval from URL query parameters
-	refreshInterval := r.URL.Query().Get("interval")
-	if refreshInterval == "" {
-		refreshInterval = "5" // default to 5 seconds if no interval specified
-	}
+    // Get refresh interval from URL query parameters
+    refreshInterval := r.URL.Query().Get("interval")
+    if refreshInterval == "" {
+        refreshInterval = "5" // default to 5 seconds if no interval specified
+    }
 
-	rows, err := db.Query(`
-		SELECT command, task_uid, MAX(timestamp) AS last_run, 
-		       SUM(CASE WHEN status = 'Success' THEN 1 ELSE 0 END) AS success_count,
-		       SUM(CASE WHEN status = 'Failure' THEN 1 ELSE 0 END) AS failure_count,
-		       output
-		FROM tasks
-		GROUP BY command
-		ORDER BY last_run DESC
-	`)
-	if err != nil {
-		http.Error(w, "Error querying database", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
+    rows, err := db.Query(`
+        SELECT command, task_uid, MAX(timestamp) AS last_run, 
+               SUM(CASE WHEN status = 'Success' THEN 1 ELSE 0 END) AS success_count,
+               SUM(CASE WHEN status = 'Failure' THEN 1 ELSE 0 END) AS failure_count,
+               output
+        FROM tasks
+        GROUP BY command
+        ORDER BY last_run DESC
+    `)
+    if err != nil {
+        http.Error(w, "Error querying database", http.StatusInternalServerError)
+        return
+    }
+    defer rows.Close()
 
-	currentTime := getCurrentTime()
+    currentTime := getCurrentTime()
 
-	fmt.Fprintln(w, `
-	<!DOCTYPE html>
-	<html lang="en">
-	<head>
-	    <meta charset="UTF-8">
-	    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	    <title>Job Execution Details</title>
-	    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-	    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
-	    <style>
-	        body {
-	            padding: 20px;
-	        }
-	        table {
-	            width: 100%;
-	            margin-top: 20px;
-	        }
-	    </style>
-	</head>
-	<body>
-	    <div class="container">
-	        <h1>Job Execution Details</h1>
-	        <p>Current Time: `+currentTime+`</p>
-	        <div class="mb-3">
-	            <label for="refreshInterval" class="form-label">Select refresh interval:</label>
-	            <select id="refreshInterval" class="form-select" onchange="updateRefreshInterval()">
-	                <option value="5" `+checkSelected(refreshInterval, "5")+`>5s</option>
-	                <option value="10" `+checkSelected(refreshInterval, "10")+`>10s</option>
-	                <option value="30" `+checkSelected(refreshInterval, "30")+`>30s</option>
-	            </select>
-	        </div>
-	        <div class="mb-3">
-	            <a href="/add-job" class="btn btn-primary">Add New Job</a>
-	        </div>
-	        <table class="table table-striped table-hover">
-	            <thead>
-	                <tr>
-	                    <th>UID</th>
-	                    <th>Command</th>
-	                    <th>Last Run</th>
-	                    <th>Success Count</th>
-	                    <th>Failure Count</th>
-	                    <th>Output</th>
-	                </tr>
-	            </thead>
-	            <tbody>`)
+    var jobs []struct {
+        TaskUID      string
+        Command      string
+        LastRun      string
+        SuccessCount int
+        FailureCount int
+        Output       string
+        HasOutput    bool
+    }
 
-	for rows.Next() {
-		var taskID string
-		var command string
-		var lastRun string
-		var successCount, failureCount int
-		var output string
+    for rows.Next() {
+        var taskID, command, lastRun, output string
+        var successCount, failureCount int
 
-		err := rows.Scan(&command, &taskID, &lastRun, &successCount, &failureCount, &output)
-		if err != nil {
-			http.Error(w, "Error reading from database", http.StatusInternalServerError)
-			return
-		}
+        err := rows.Scan(&command, &taskID, &lastRun, &successCount, &failureCount, &output)
+        if err != nil {
+            http.Error(w, "Error reading from database", http.StatusInternalServerError)
+            return
+        }
 
-		if len(output) > 2 {
-			// Create a button to download the log file
-			fmt.Fprintf(w, `<tr>
-				<td>%s</td>
-				<td>%s</td>
-				<td>%s</td>
-				<td>%d</td>
-				<td>%d</td>
-				<td><button class="btn btn-primary" onclick="downloadLog('%s')">Download Log</button></td>
-			</tr>`, taskID, command, lastRun, successCount, failureCount, taskID)
-		} else {
-			fmt.Fprintf(w, `<tr>
-				<td>%s</td>
-				<td>%s</td>
-				<td>%s</td>
-				<td>%d</td>
-				<td>%d</td>
-				<td>%s</td>
-			</tr>`, taskID, command, lastRun, successCount, failureCount, output)
-		}
-	}
+        jobs = append(jobs, struct {
+            TaskUID      string
+            Command      string
+            LastRun      string
+            SuccessCount int
+            FailureCount int
+            Output       string
+            HasOutput    bool
+        }{
+            TaskUID:      taskID,
+            Command:      command,
+            LastRun:      lastRun,
+            SuccessCount: successCount,
+            FailureCount: failureCount,
+            Output:       output,
+            HasOutput:    len(output) > 2,
+        })
+    }
 
-	fmt.Fprintln(w, `</tbody></table>
-	    <script>
-	        function updateRefreshInterval() {
-	            var interval = document.getElementById('refreshInterval').value;
-	            if (interval == 0) {
-	                interval = 5; // Default to 5 seconds for real-time
-	            }
-	            window.location.search = 'interval=' + interval;
-	        }
+    tmpl := template.Must(template.ParseFiles("templates/index.html"))
+    data := struct {
+        CurrentTime    string
+        RefreshInterval string
+        Jobs           []struct {
+            TaskUID      string
+            Command      string
+            LastRun      string
+            SuccessCount int
+            FailureCount int
+            Output       string
+            HasOutput    bool
+        }
+    }{
+        CurrentTime:    currentTime,
+        RefreshInterval: refreshInterval,
+        Jobs:           jobs,
+    }
 
-	        var selectedInterval = document.getElementById('refreshInterval').value;
-	        setInterval(function() {
-	            window.location.search = 'interval=' + selectedInterval;
-	        }, selectedInterval * 1000);
-
-	        function downloadLog(taskID) {
-	            window.location.href = '/download?task_uid=' + taskID;
-	        }
-	    </script>
-	</body>
-	</html>
-	`)
+    w.Header().Set("Content-Type", "text/html; charset=utf-8")
+    if err := tmpl.Execute(w, data); err != nil {
+        http.Error(w, "Error rendering template", http.StatusInternalServerError)
+    }
 }
+
 
 // Handler for downloading log file
 func downloadLogHandler(w http.ResponseWriter, r *http.Request) {

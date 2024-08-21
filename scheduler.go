@@ -458,25 +458,20 @@ func scheduleJobsFromTable(c *cron.Cron) {
 			continue
 		}
 
+		// Schedule the job only if job_status is 1 (active)
 		_, err = c.AddFunc(cronExpr, func(cmd string) func() {
 			return func() {
 				job(cmd)
 			}
 		}(command))
-		var SchedulerLine string
 		if err != nil {
-			SchedulerLine += fmt.Sprintf("Error scheduling job: %s\n", err)
+			fmt.Printf("Error scheduling job: %s\n", err)
 		} else {
-			SchedulerLine += fmt.Sprintf("Scheduled job: %s with cron expression: %s\n", command, cronExpr)
-		}
-		fmt.Print(SchedulerLine)
-
-		_, err = logFile.WriteString(SchedulerLine)
-		if err != nil {
-			fmt.Printf("Error writing to log file: %s\n", err)
+			fmt.Printf("Scheduled job: %s with cron expression: %s\n", command, cronExpr)
 		}
 	}
 }
+
 
 // Handler to display the delete job page with populated dropdown
 func deleteJobPageHandler(w http.ResponseWriter, r *http.Request) {

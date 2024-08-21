@@ -1,5 +1,3 @@
-*/2 * * * * echo "Hello" >> ./logs/date.log
 * * * * * date>> ./logs/date.log
 * * * * * python ./scripts/test.py
-* * * * * python ./scripts/a.py
 * * * * * python ./scripts/sequence.py

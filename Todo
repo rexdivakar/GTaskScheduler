@@ -1,0 +1,9 @@
+modify this code to add the cron jobs to the table called jobs which takes the field job_id, job_name, cron_expression, job_description, last_added_time and last_run_time. The job_name and job_description can be taken from the command and cron expression respectively. The last_added_time can be the current timestamp when the job is added and last_run_time can be set to NULL initially. The job_id should be auto-incremented. The cron_jobs.txt file should be removed and the jobs should be stored in the database instead. The jobs should be scheduled from the database instead of the file. The code should be modified accordingly. The following changes should be made:
+	=> Create a new table called jobs in the database with the specified fields.
+	=> Modify the addJobHandler and submitJobHandler to insert new jobs into the jobs table.
+	=> Modify the scheduleJobsFromFile function to retrieve jobs from the jobs table and schedule them.
+	=> Modify the job function to update the last_run_time in the jobs table after a job is executed.
+	=> Modify the logJobStatusToDB function to include the job_id when logging job status.
+	=> Modify the distinctCommandsHandler function to display the job_name and job_description instead of command and task_id.
+	=> Modify the downloadLogHandler function to retrieve job details from the jobs table instead of the task_status table.
+	=> Modify the HTML output in the distinctCommandsHandler function to reflect the new structure.

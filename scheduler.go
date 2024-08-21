@@ -216,13 +216,6 @@ func getCurrentTime() string {
 	return time.Now().Format("02-01-2006 15:04:05")
 }
 
-// Helper function to check if an option should be selected
-func checkSelected(current, option string) string {
-	if current == option {
-		return "selected"
-	}
-	return ""
-}
 
 // Handler for displaying distinct commands and their last status
 func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
@@ -484,7 +477,6 @@ func scheduleJobsFromTable(c *cron.Cron) {
 		}
 	}
 }
-
 
 // Handler to display the delete job page with populated dropdown
 func deleteJobPageHandler(w http.ResponseWriter, r *http.Request) {

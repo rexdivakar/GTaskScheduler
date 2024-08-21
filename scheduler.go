@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"database/sql"
 	"fmt"
 	"html/template"
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
@@ -452,7 +450,7 @@ func submitJobHandler(w http.ResponseWriter, r *http.Request) {
 
 // Function to schedule jobs from the jobs table
 func scheduleJobsFromTable(c *cron.Cron) {
-	rows, err := db.Query(`SELECT job_schedule, job_command FROM jobs`)
+	rows, err := db.Query(`SELECT job_schedule, job_command FROM jobs WHERE job_status = 1`)
 	if err != nil {
 		fmt.Printf("Error querying jobs from database: %s\n", err)
 		return
@@ -486,6 +484,7 @@ func scheduleJobsFromTable(c *cron.Cron) {
 		}
 	}
 }
+
 
 // Handler to display the delete job page with populated dropdown
 func deleteJobPageHandler(w http.ResponseWriter, r *http.Request) {

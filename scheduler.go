@@ -529,6 +529,7 @@ func getJobs() ([]Job, error) {
 	return jobs, nil
 }
 
+// Handler for deleting a job
 func deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -549,7 +550,7 @@ func deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete job from database using the global db instance
+	// Update job status to 0 (disabled) in the database
 	_, err = db.Exec("UPDATE jobs SET job_status = 0 WHERE job_id = ?", jobID)
 	if err != nil {
 		http.Error(w, "Failed to delete job", http.StatusInternalServerError)

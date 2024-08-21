@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"database/sql"
+	"html/template"
 	"fmt"
 	"net/http"
 	"os"
@@ -66,7 +67,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 	job_name TEXT UNIQUE,
 	job_schedule TEXT,
 	job_command TEXT,
-    job_description TEXT UNIQUE,
+    job_description TEXT,
     added_at TEXT
 );
 	`
@@ -113,13 +114,6 @@ func logJobStatusToDB(jobStatus JobStatus) {
 	result, err := db.Exec(insertTasksTable, jobStatus.UID, jobStatus.Command, jobStatus.Timestamp, jobStatus.Status, jobStatus.Output)
 	if err != nil {
 		fmt.Printf("Error inserting into database: %s\n", err)
-		return
-	}
-
-	insertJobsTable := `INSERT INTO jobs (job_schedule, job_command, job_name, job_description, added_at) VALUES (?, ?, ?, ?, ?)`
-	_, err = db.Exec(insertJobsTable, jobStatus.Command, jobStatus.Command, jobStatus.UID, jobStatus.Command, jobStatus.Timestamp)
-	if err != nil {
-		fmt.Printf("Error inserting into jobs table: %s\n", err)
 		return
 	}
 
@@ -418,6 +412,14 @@ func addJobHandler(w http.ResponseWriter, r *http.Request) {
 	        <h1>Add New Cron Job</h1>
 	        <form action="/submit-job" method="post">
 	            <div class="mb-3">
+	                <label for="jobName" class="form-label">Job Name</label>
+	                <input type="text" class="form-control" id="jobName" name="job_name" required>
+	            </div>
+	            <div class="mb-3">
+	                <label for="jobDescription" class="form-label">Job Description</label>
+	                <input type="text" class="form-control" id="jobDescription" name="job_description" required>
+	            </div>
+	            <div class="mb-3">
 	                <label for="cronExpr" class="form-label">Cron Expression</label>
 	                <input type="text" class="form-control" id="cronExpr" name="cron_expr" required>
 	            </div>
@@ -442,34 +444,79 @@ func submitJobHandler(w http.ResponseWriter, r *http.Request) {
 
 	cronExpr := r.FormValue("cron_expr")
 	command := r.FormValue("command")
+	jobName := r.FormValue("job_name")
+	jobDescription := r.FormValue("job_description")
 
-	if cronExpr == "" || command == "" {
-		http.Error(w, "Missing cron expression or command", http.StatusBadRequest)
+	if cronExpr == "" || command == "" || jobName == "" || jobDescription == "" {
+		renderFormWithError(w, cronExpr, command, jobName, jobDescription, "Missing cron expression, command, job name, or job description")
+		return
+	}
+
+	// Check if the job name is already taken
+	var exists bool
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM jobs WHERE job_name = ?)", jobName).Scan(&exists)
+	if err != nil {
+		renderFormWithError(w, cronExpr, command, jobName, jobDescription, "Error checking job name in database")
+		return
+	}
+
+	if exists {
+		renderFormWithError(w, cronExpr, command, jobName, jobDescription, "Job name already exists. Please enter a different unique job name.")
 		return
 	}
 
 	// Add the new job to the file
 	file, err := os.OpenFile("cron_jobs.txt", os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		http.Error(w, "Error opening cron jobs file", http.StatusInternalServerError)
+		renderFormWithError(w, cronExpr, command, jobName, jobDescription, "Error opening cron jobs file")
 		return
 	}
 	defer file.Close()
 
-	// _, err = file.WriteString("\n" + cronExpr + " " + command)
-	// if err != nil {
-	// 	http.Error(w, "Error writing to cron jobs file", http.StatusInternalServerError)
-	// 	return
-	// }
-
 	_, err = fmt.Fprintf(file, "%s %s\n", cronExpr, command)
 	if err != nil {
-		http.Error(w, "Error writing to cron jobs file", http.StatusInternalServerError)
+		renderFormWithError(w, cronExpr, command, jobName, jobDescription, "Error writing to cron jobs file")
+		return
+	}
+
+	// Insert the new job into the jobs table
+	timestamp := time.Now().Format("02-01-2006 15:04:05")
+	_, err = db.Exec(`INSERT INTO jobs (job_name, job_schedule, job_command, job_description, added_at) VALUES (?, ?, ?, ?, ?)`,
+		jobName, cronExpr, command, jobDescription, timestamp)
+	if err != nil {
+		renderFormWithError(w, cronExpr, command, jobName, jobDescription, "Error inserting job into database")
 		return
 	}
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
+
+
+// Helper function to render the form with an error message
+func renderFormWithError(w http.ResponseWriter, cronExpr, command, jobName, jobDescription, errorMessage string) {
+	// Render the form template with the error message and pre-filled form values
+	tmpl := template.Must(template.ParseFiles("templates/form.html"))
+	data := struct {
+		CronExpr       string
+		Command        string
+		JobName        string
+		JobDescription string
+		ErrorMessage   string
+	}{
+		CronExpr:       cronExpr,
+		Command:        command,
+		JobName:        jobName,
+		JobDescription: jobDescription,
+		ErrorMessage:   errorMessage,
+	}
+
+	w.WriteHeader(http.StatusBadRequest) // Set the status to 400 Bad Request
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, "Error rendering form template", http.StatusInternalServerError)
+	}
+}
+
+
 
 func main() {
 

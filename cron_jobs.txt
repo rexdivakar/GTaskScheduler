@@ -1,3 +1,0 @@
-* * * * * date>> ./logs/date.log
-* * * * * python ./scripts/test.py
-* * * * * python ./scripts/sequence.py

@@ -465,20 +465,6 @@ func submitJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add the new job to the file
-	file, err := os.OpenFile("cron_jobs.txt", os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		renderFormWithError(w, cronExpr, command, jobName, jobDescription, "Error opening cron jobs file")
-		return
-	}
-	defer file.Close()
-
-	_, err = fmt.Fprintf(file, "%s %s\n", cronExpr, command)
-	if err != nil {
-		renderFormWithError(w, cronExpr, command, jobName, jobDescription, "Error writing to cron jobs file")
-		return
-	}
-
 	// Insert the new job into the jobs table
 	timestamp := time.Now().Format("02-01-2006 15:04:05")
 	_, err = db.Exec(`INSERT INTO jobs (job_name, job_schedule, job_command, job_description, added_at) VALUES (?, ?, ?, ?, ?)`,
@@ -488,8 +474,58 @@ func submitJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Schedule the new job immediately
+	c := cron.New()
+	_, err = c.AddFunc(cronExpr, func(cmd string) func() {
+		return func() {
+			job(cmd)
+		}
+	}(command))
+	if err != nil {
+		fmt.Printf("Error scheduling new job: %s\n", err)
+	} else {
+		c.Start()
+	}
+
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
+// Function to schedule jobs from the jobs table
+func scheduleJobsFromTable(c *cron.Cron) {
+	rows, err := db.Query(`SELECT job_schedule, job_command FROM jobs`)
+	if err != nil {
+		fmt.Printf("Error querying jobs from database: %s\n", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cronExpr, command string
+		err := rows.Scan(&cronExpr, &command)
+		if err != nil {
+			fmt.Printf("Error scanning job row: %s\n", err)
+			continue
+		}
+
+		_, err = c.AddFunc(cronExpr, func(cmd string) func() {
+			return func() {
+				job(cmd)
+			}
+		}(command))
+		var SchedulerLine string
+		if err != nil {
+			SchedulerLine += fmt.Sprintf("Error scheduling job: %s\n", err)
+		} else {
+			SchedulerLine += fmt.Sprintf("Scheduled job: %s with cron expression: %s\n", command, cronExpr)
+		}
+		fmt.Print(SchedulerLine)
+
+		_, err = logFile.WriteString(SchedulerLine)
+		if err != nil {
+			fmt.Printf("Error writing to log file: %s\n", err)
+		}
+	}
+}
+
 
 
 // Helper function to render the form with an error message
@@ -572,7 +608,7 @@ func main() {
 	defer db.Close()
 
 	c := cron.New()
-	scheduleJobsFromFile(c, "cron_jobs.txt")
+	scheduleJobsFromTable(c)
 	c.Start()
 	logSchedulerStart()
 
@@ -586,3 +622,4 @@ func main() {
 		return
 	}
 }
+

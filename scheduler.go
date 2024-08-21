@@ -3,8 +3,8 @@ package main
 import (
 	"bufio"
 	"database/sql"
-	"html/template"
 	"fmt"
+	"html/template"
 	"net/http"
 	"os"
 	"os/exec"
@@ -68,7 +68,9 @@ CREATE TABLE IF NOT EXISTS jobs (
 	job_schedule TEXT,
 	job_command TEXT,
     job_description TEXT,
-    added_at TEXT
+    added_at TEXT,
+	job_status Boolean DEFAULT 1,
+	updated_at TEXT
 );
 	`
 	_, err = database.Exec(createTableSQL)
@@ -151,50 +153,50 @@ func job(command string) {
 	logJobStatus(jobStatus)
 }
 
-// Function to parse cron job file and schedule jobs
-func scheduleJobsFromFile(c *cron.Cron, filePath string) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		fmt.Printf("Error opening file: %s\n", err)
-		return
-	}
-	defer file.Close()
+// // Function to parse cron job file and schedule jobs
+// func scheduleJobsFromFile(c *cron.Cron, filePath string) {
+// 	file, err := os.Open(filePath)
+// 	if err != nil {
+// 		fmt.Printf("Error opening file: %s\n", err)
+// 		return
+// 	}
+// 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Fields(line)
-		if len(parts) < 6 {
-			fmt.Printf("Skipping invalid line: %s\n", line)
-			continue
-		}
+// 	scanner := bufio.NewScanner(file)
+// 	for scanner.Scan() {
+// 		line := scanner.Text()
+// 		parts := strings.Fields(line)
+// 		if len(parts) < 6 {
+// 			fmt.Printf("Skipping invalid line: %s\n", line)
+// 			continue
+// 		}
 
-		cronExpr := strings.Join(parts[:5], " ")
-		command := strings.Join(parts[5:], " ")
+// 		cronExpr := strings.Join(parts[:5], " ")
+// 		command := strings.Join(parts[5:], " ")
 
-		_, err := c.AddFunc(cronExpr, func(cmd string) func() {
-			return func() {
-				job(cmd)
-			}
-		}(command))
-		var SchedulerLine string
-		if err != nil {
-			SchedulerLine += fmt.Sprintf("Error scheduling job: %s\n", err)
-		} else {
-			SchedulerLine += fmt.Sprintf("Scheduled job: %s with cron expression: %s\n", command, cronExpr)
-		}
-		fmt.Print(SchedulerLine)
+// 		_, err := c.AddFunc(cronExpr, func(cmd string) func() {
+// 			return func() {
+// 				job(cmd)
+// 			}
+// 		}(command))
+// 		var SchedulerLine string
+// 		if err != nil {
+// 			SchedulerLine += fmt.Sprintf("Error scheduling job: %s\n", err)
+// 		} else {
+// 			SchedulerLine += fmt.Sprintf("Scheduled job: %s with cron expression: %s\n", command, cronExpr)
+// 		}
+// 		fmt.Print(SchedulerLine)
 
-		_, err = logFile.WriteString(SchedulerLine)
-		if err != nil {
-			fmt.Printf("Error writing to log file: %s\n", err)
-		}
-	}
+// 		_, err = logFile.WriteString(SchedulerLine)
+// 		if err != nil {
+// 			fmt.Printf("Error writing to log file: %s\n", err)
+// 		}
+// 	}
 
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("Error reading file: %s\n", err)
-	}
-}
+// 	if err := scanner.Err(); err != nil {
+// 		fmt.Printf("Error reading file: %s\n", err)
+// 	}
+// }
 
 // Function to print scheduler start log
 func logSchedulerStart() {
@@ -226,16 +228,16 @@ func checkSelected(current, option string) string {
 
 // Handler for displaying distinct commands and their last status
 func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
-    mu.Lock()
-    defer mu.Unlock()
+	mu.Lock()
+	defer mu.Unlock()
 
-    // Get refresh interval from URL query parameters
-    refreshInterval := r.URL.Query().Get("interval")
-    if refreshInterval == "" {
-        refreshInterval = "5" // default to 5 seconds if no interval specified
-    }
+	// Get refresh interval from URL query parameters
+	refreshInterval := r.URL.Query().Get("interval")
+	if refreshInterval == "" {
+		refreshInterval = "5" // default to 5 seconds if no interval specified
+	}
 
-    rows, err := db.Query(`
+	rows, err := db.Query(`
         SELECT command, task_uid, MAX(timestamp) AS last_run, 
                SUM(CASE WHEN status = 'Success' THEN 1 ELSE 0 END) AS success_count,
                SUM(CASE WHEN status = 'Failure' THEN 1 ELSE 0 END) AS failure_count,
@@ -244,78 +246,77 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
         GROUP BY command
         ORDER BY last_run DESC
     `)
-    if err != nil {
-        http.Error(w, "Error querying database", http.StatusInternalServerError)
-        return
-    }
-    defer rows.Close()
+	if err != nil {
+		http.Error(w, "Error querying database", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 
-    currentTime := getCurrentTime()
+	currentTime := getCurrentTime()
 
-    var jobs []struct {
-        TaskUID      string
-        Command      string
-        LastRun      string
-        SuccessCount int
-        FailureCount int
-        Output       string
-        HasOutput    bool
-    }
+	var jobs []struct {
+		TaskUID      string
+		Command      string
+		LastRun      string
+		SuccessCount int
+		FailureCount int
+		Output       string
+		HasOutput    bool
+	}
 
-    for rows.Next() {
-        var taskID, command, lastRun, output string
-        var successCount, failureCount int
+	for rows.Next() {
+		var taskID, command, lastRun, output string
+		var successCount, failureCount int
 
-        err := rows.Scan(&command, &taskID, &lastRun, &successCount, &failureCount, &output)
-        if err != nil {
-            http.Error(w, "Error reading from database", http.StatusInternalServerError)
-            return
-        }
+		err := rows.Scan(&command, &taskID, &lastRun, &successCount, &failureCount, &output)
+		if err != nil {
+			http.Error(w, "Error reading from database", http.StatusInternalServerError)
+			return
+		}
 
-        jobs = append(jobs, struct {
-            TaskUID      string
-            Command      string
-            LastRun      string
-            SuccessCount int
-            FailureCount int
-            Output       string
-            HasOutput    bool
-        }{
-            TaskUID:      taskID,
-            Command:      command,
-            LastRun:      lastRun,
-            SuccessCount: successCount,
-            FailureCount: failureCount,
-            Output:       output,
-            HasOutput:    len(output) > 2,
-        })
-    }
+		jobs = append(jobs, struct {
+			TaskUID      string
+			Command      string
+			LastRun      string
+			SuccessCount int
+			FailureCount int
+			Output       string
+			HasOutput    bool
+		}{
+			TaskUID:      taskID,
+			Command:      command,
+			LastRun:      lastRun,
+			SuccessCount: successCount,
+			FailureCount: failureCount,
+			Output:       output,
+			HasOutput:    len(output) > 2,
+		})
+	}
 
-    tmpl := template.Must(template.ParseFiles("templates/index.html"))
-    data := struct {
-        CurrentTime    string
-        RefreshInterval string
-        Jobs           []struct {
-            TaskUID      string
-            Command      string
-            LastRun      string
-            SuccessCount int
-            FailureCount int
-            Output       string
-            HasOutput    bool
-        }
-    }{
-        CurrentTime:    currentTime,
-        RefreshInterval: refreshInterval,
-        Jobs:           jobs,
-    }
+	tmpl := template.Must(template.ParseFiles("templates/index.html"))
+	data := struct {
+		CurrentTime     string
+		RefreshInterval string
+		Jobs            []struct {
+			TaskUID      string
+			Command      string
+			LastRun      string
+			SuccessCount int
+			FailureCount int
+			Output       string
+			HasOutput    bool
+		}
+	}{
+		CurrentTime:     currentTime,
+		RefreshInterval: refreshInterval,
+		Jobs:            jobs,
+	}
 
-    w.Header().Set("Content-Type", "text/html; charset=utf-8")
-    if err := tmpl.Execute(w, data); err != nil {
-        http.Error(w, "Error rendering template", http.StatusInternalServerError)
-    }
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+	}
 }
-
 
 // Handler for downloading log file
 func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
@@ -448,6 +449,7 @@ func submitJobHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
+
 // Function to schedule jobs from the jobs table
 func scheduleJobsFromTable(c *cron.Cron) {
 	rows, err := db.Query(`SELECT job_schedule, job_command FROM jobs`)
@@ -485,7 +487,79 @@ func scheduleJobsFromTable(c *cron.Cron) {
 	}
 }
 
+// Handler to display the delete job page with populated dropdown
+func deleteJobPageHandler(w http.ResponseWriter, r *http.Request) {
+	// Fetch jobs from the database
+	jobs, err := getJobs()
+	if err != nil {
+		http.Error(w, "Error retrieving jobs from the database", http.StatusInternalServerError)
+		return
+	}
 
+	// Parse and execute the template with job data
+	tmpl := template.Must(template.ParseFiles("templates/delete_job.html"))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.Execute(w, struct{ Jobs []Job }{Jobs: jobs}); err != nil {
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+	}
+}
+
+type Job struct {
+	JobID   string
+	JobName string
+}
+
+func getJobs() ([]Job, error) {
+	rows, err := db.Query("SELECT job_id, job_name FROM jobs where job_status = 1")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []Job
+	for rows.Next() {
+		var job Job
+		if err := rows.Scan(&job.JobID, &job.JobName); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}
+
+func deleteJobHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse form values
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Get job ID from form data
+	jobID := r.FormValue("job_id")
+	if jobID == "" {
+		http.Error(w, "Job ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Delete job from database using the global db instance
+	_, err = db.Exec("UPDATE jobs SET job_status = 0 WHERE job_id = ?", jobID)
+	if err != nil {
+		http.Error(w, "Failed to delete job", http.StatusInternalServerError)
+		return
+	}
+
+	// Redirect to a page that lists jobs or another appropriate page
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
 
 // Helper function to render the form with an error message
 func renderFormWithError(w http.ResponseWriter, cronExpr, command, jobName, jobDescription, errorMessage string) {
@@ -510,8 +584,6 @@ func renderFormWithError(w http.ResponseWriter, cronExpr, command, jobName, jobD
 		http.Error(w, "Error rendering form template", http.StatusInternalServerError)
 	}
 }
-
-
 
 func main() {
 
@@ -571,14 +643,16 @@ func main() {
 	c.Start()
 	logSchedulerStart()
 
+	// Register routes
 	http.HandleFunc("/", distinctCommandsHandler)
 	http.HandleFunc("/download", downloadLogHandler)
 	http.HandleFunc("/add-job", addJobHandler)
 	http.HandleFunc("/submit-job", submitJobHandler)
+	http.HandleFunc("/delete-job", deleteJobHandler)
+	http.HandleFunc("/delete-job-page", deleteJobPageHandler)
 	err = http.ListenAndServe(endPoint, nil)
 	if err != nil {
 		fmt.Printf("Error starting server: %s\n", err)
 		return
 	}
 }
-

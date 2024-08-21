@@ -52,13 +52,22 @@ func initDatabase(dbPath string) (*sql.DB, error) {
 
 	// Create table if not exists
 	createTableSQL := `
-CREATE TABLE IF NOT EXISTS task_status (
-    job_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT UNIQUE,
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_uid TEXT UNIQUE,
     command TEXT,
     timestamp TEXT,
     status TEXT,
     output TEXT
+);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    job_id INTEGER PRIMARY KEY AUTOINCREMENT,
+	job_name TEXT UNIQUE,
+	job_schedule TEXT,
+	job_command TEXT,
+    job_description TEXT UNIQUE,
+    added_at TEXT
 );
 	`
 	_, err = database.Exec(createTableSQL)
@@ -100,10 +109,17 @@ func logJobStatusToDB(jobStatus JobStatus) {
 		return
 	}
 
-	insertSQL := `INSERT INTO task_status (task_id, command, timestamp, status, output) VALUES (?, ?, ?, ?, ?)`
-	result, err := db.Exec(insertSQL, jobStatus.UID, jobStatus.Command, jobStatus.Timestamp, jobStatus.Status, jobStatus.Output)
+	insertTasksTable := `INSERT INTO tasks (task_uid, command, timestamp, status, output) VALUES (?, ?, ?, ?, ?)`
+	result, err := db.Exec(insertTasksTable, jobStatus.UID, jobStatus.Command, jobStatus.Timestamp, jobStatus.Status, jobStatus.Output)
 	if err != nil {
 		fmt.Printf("Error inserting into database: %s\n", err)
+		return
+	}
+
+	insertJobsTable := `INSERT INTO jobs (job_schedule, job_command, job_name, job_description, added_at) VALUES (?, ?, ?, ?, ?)`
+	_, err = db.Exec(insertJobsTable, jobStatus.Command, jobStatus.Command, jobStatus.UID, jobStatus.Command, jobStatus.Timestamp)
+	if err != nil {
+		fmt.Printf("Error inserting into jobs table: %s\n", err)
 		return
 	}
 
@@ -226,11 +242,11 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := db.Query(`
-		SELECT command, task_id, MAX(timestamp) AS last_run, 
+		SELECT command, task_uid, MAX(timestamp) AS last_run, 
 		       SUM(CASE WHEN status = 'Success' THEN 1 ELSE 0 END) AS success_count,
 		       SUM(CASE WHEN status = 'Failure' THEN 1 ELSE 0 END) AS failure_count,
 		       output
-		FROM task_status
+		FROM tasks
 		GROUP BY command
 		ORDER BY last_run DESC
 	`)
@@ -340,7 +356,7 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 	        }, selectedInterval * 1000);
 
 	        function downloadLog(taskID) {
-	            window.location.href = '/download?task_id=' + taskID;
+	            window.location.href = '/download?task_uid=' + taskID;
 	        }
 	    </script>
 	</body>
@@ -350,7 +366,7 @@ func distinctCommandsHandler(w http.ResponseWriter, r *http.Request) {
 
 // Handler for downloading log file
 func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
-	taskID := r.URL.Query().Get("task_id")
+	taskID := r.URL.Query().Get("task_uid")
 
 	if taskID == "" {
 		http.Error(w, "Task ID not specified", http.StatusBadRequest)
@@ -358,7 +374,7 @@ func downloadLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve job details from the database based on taskID
-	query := `SELECT task_id, command, timestamp, status, output FROM task_status WHERE task_id = ?`
+	query := `SELECT task_uid, command, timestamp, status, output FROM tasks WHERE task_uid = ?`
 	row := db.QueryRow(query, taskID)
 
 	var command, timestamp, status, output string

@@ -1,6 +1,6 @@
 # GtaskScheduler
 
-## Cron Job Scheduler with Logging and Database Tracking
+## Cron Job Scheduler
 
 This Go program is a cron job scheduler that reads job definitions from a file, executes the jobs at the scheduled times, logs the execution details, and tracks the job status in an SQLite database. Additionally, it provides a web interface to display the job statuses and allows downloading of job logs.
 
